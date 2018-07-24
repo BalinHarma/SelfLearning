@@ -1,0 +1,19 @@
+0.  BMP: up to 32 bit, 4,294,967,296 GIF: 8 bit, 256 colors, JPEG: up to 24 bit, 16,777,216 distinct, PNG up to 24 bit, 16,777,216 distinct colors.
+1.  GIF
+2.  We lose information with lossy compression, meaning, we can't get back the original image from the product.
+3.  JPEG
+4.  Only the metadata gets deleted, which points to the actual file, but the file itself remains untouched until overwritten 
+5.  Sanitize my drive, or, physically destroy the disk.
+6.  Stdint.h defines a set of fixed-width integer types, which are usefull for multiple platform development.
+7.  We can assume that they are always the same predefined size, independent of platform.
+8.  In bytes: BYTE = 1, DWORD = 4, LONG = 4, WORD = 2.
+9.  In ASCCI "BM" in hex and in reverse for som reason 0x4d42.
+10. bfSize is in the fileheader struct, and describes the file size, biSize is in the infoheader and describes the infoheader size in the file.
+11. It signifies that the vitmap is top-down, and its origin is in the upper left corner.
+12. biBitCount
+13. It could not creat the specified file (not enough priviliges, and so on).
+14. We always read step by step, one by onecheck50 2014/x/pset5/resize bmp.h resize.c. 
+15. 2
+16. It sets the file position indicator.
+17. SEEK_CUR i an argument to fseek, it tells fseek that it should count the offset relative from the current file position.
+18. Milo Banana dun it!

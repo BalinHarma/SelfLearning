@@ -1,0 +1,11 @@
+0.  The longest english word, at 45 characters.
+1.  Gets tecified prosess' resource usage.
+2.  16
+3.  If we wanted to pass inn the values, we would have to check if they pointed to NULL before every call to calculate, but if we only pass in them as addresses, we only need to check inside the function.
+4.  It reads chars one at a time, until reaches EOF. Then it filters out non alphabetic chars (but leaves in the ' ) If the char is not another alphabetic char to append to the end of the current word, it assumes it found the end of a word, and calls check on the word, then returns the for loop.
+5.  We don't have the fine control with fscnaf to choose what constitutes a word in our terms as with going through char by char.
+6.  The pointr which we pass along is constnt.
+7.  I used a trie, with my structs containing a bool to signify a words end with true, and an array of 27 pointers to new nodes corresponding to ' and a - z;
+8.  Not much slower than the current version, I tried optimizing it, but nothing really changed, maybe I will try to rewrite it entirelly when I get a good idea.
+9.  I optimized the logic of conditions inside load and check, but I couldn't surpass the staff solution yet.
+10. I am not sure what is the bottleneck, but maybe too much jumping between memoy adresses? check takes up the biggest chunk of my runing time
