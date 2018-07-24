@@ -1,0 +1,5 @@
+﻿1>------ Build started: Project: Project, Configuration: Debug Win32 ------
+1>  Assembling ZhKeret.asm...
+1>  Project.vcxproj -> D:\suli\2 mérnök infó\Assembly\ProjectZH\Debug\Project.exe
+1>  Project.vcxproj -> D:\suli\2 mérnök infó\Assembly\ProjectZH\Debug\Project.pdb (Full PDB)
+========== Build: 1 succeeded, 0 failed, 0 up-to-date, 0 skipped ==========

@@ -1,0 +1,1101 @@
+Microsoft (R) Macro Assembler Version 14.00.24210.0	    05/12/18 22:36:29
+HB_beadando.asm						     Page 1 - 1
+
+
+				INCLUDE Irvine32.inc
+			      C ; Include file for Irvine32.lib             (Irvine32.inc)
+			      C 
+			      C ;OPTION CASEMAP:NONE		; optional: make identifiers case-sensitive
+			      C 
+			      C INCLUDE SmallWin.inc		; MS-Windows prototypes, structures, and constants
+			      C .NOLIST
+			      C .LIST
+			      C 
+			      C INCLUDE VirtualKeys.inc
+			      C ; VirtualKeys.inc
+			      C .NOLIST
+			      C .LIST
+			      C 
+			      C 
+			      C .NOLIST
+			      C .LIST
+			      C 
+
+				; Harmat Bálint
+				; DX3MYV
+				; L. Assembly Programozás lab. gyak
+				;
+				; 30. Labirintus feladat
+				;
+				; Input:	a labirintus egy tömbben, az adatszegmensben.
+				;			a labirintus szélessége (tömb oszlopainak száma) és a labirintus teljes területe (tömb elemeinek száma)
+				; Output: az ágens minden lépése után kirajzolódik a konzolra az aktuális labirintus állapot.
+				;	Output értelmezése: fehér tömör téglalap	= fal
+				;						a						= ágens
+				;						e						= a labirintus kijárata ("end")
+				;						1						= olyan mezõ, melyen az ágens már járt egyszer
+				;						2						= olyan mezõ, melyen az ágens másodszor lép át, vagy
+				;												melyen visszafordult egy zsákutcából.
+				;
+				; Ha az inputban nincs ágens, hiba üzenetet dob.
+				; Ha az inputban nincs exit mezõ, akkor az ágens vissza talál a kiindulási pontba.
+				;
+				; A végsõ állapotban az 1-esekkel jelölt mezõk sorozata egy egyértelmû korrket utat mutat.
+
+ 00000000			.data
+					
+ 00000000 45 72 72 6F 72		agentErrorString	BYTE	'Error, no agent start position specified in input ("a").', 0ah, 0
+	   2C 20 6E 6F 20
+	   61 67 65 6E 74
+	   20 73 74 61 72
+	   74 20 70 6F 73
+	   69 74 69 6F 6E
+	   20 73 70 65 63
+	   69 66 69 65 64
+	   20 69 6E 20 69
+	   6E 70 75 74 20
+	   28 22 61 22 29
+	   2E 0A 00
+ 0000003A 20 73 74 65 70		newStepString		BYTE	' step', 0
+	   00
+
+ 00000040 0000				agentX	WORD	0
+ 00000042 0000				agentY	WORD	0
+
+ 00000044 77				north	BYTE	"w"
+ 00000045 77				east	BYTE	"w"
+ 00000046 77				south	BYTE	"w"
+ 00000047 77				west	BYTE	"w"
+
+ 00000048 00				NORTHPOSITION	BYTE	0
+ 00000049 00				EASTPOSITION	BYTE	0
+ 0000004A 00				SOUTHPOSITION	BYTE	0
+ 0000004B 00				WESTPOSITION	BYTE	0
+
+
+ 0000004C 0F				color			BYTE	white
+ 0000004D 00				backgroundColor	BYTE black
+
+ 0000004E 77				wall	BYTE	"w"
+ 0000004F 20				floor	BYTE	" "
+ 00000050 65				GOAL	BYTE	"e"		; SUPPOSED TO BE END, BUT IT IS A USED KEYWORD BY THE LANGUAGE....
+ 00000051 61				agent	BYTE	"a"
+ 00000052 31				first	BYTE	"1"
+ 00000053 32				second	BYTE	"2"
+
+ 00000054 00				direction		SBYTE	0 ; SIGNED -MAZEHEIGHT=NORTH 1=EAST MAZEHEIGHT=SOUTH -1=WEST
+ 00000055 00				currentPosition	BYTE	0 ; UNSIGNED
+ 00000056 00				plannedPosition BYTE	0 ; UNSIGNED
+ 00000057 00				lastPositIon	BYTE	0 ; UNSIGNED
+ 00000058 00				currentMark		BYTE	0 ; THE MARK UNDER OUR CURRENT POSITION
+ 00000059 00				FIRSTPATHS		BYTE	0 ; UNSIGNED, THE NUMBER OF POSSIBLE FIRSTPATHS (1 MEANS IT IS A HALLWAY...)
+ 0000005A 01				MARKLEVEL		BYTE	1 ; TO KEEP TRACK IF WE SHOULD USE FIRST, OR SECOND MARK..
+ 0000005B 00				GAMEOVER		BYTE	0 ; IF THIS IS SET TO 1, WE REACHED THE END OR A DEADLOCK.
+
+ 0000005C 000B				mazeWidth	WORD	11
+ 0000005E 0079				mazeSize	WORD	121
+ 00000060 0000				MAZEHEIGHT	WORD	? ; CALCULATED AT INIT...
+					
+ 00000062 77 77 77 77 77		maze	BYTE "w", "w", "w", "w", "w", "w", "w", "w", "w", "w", "w"
+	   77 77 77 77 77
+	   77
+ 0000006D  77 20 20 20 77				BYTE "w", " ", " ", " ", "w", " ", " ", " ", " ", " ", "w"
+	   20 20 20 20 20
+	   77
+ 00000078  77 20 77 77 77				BYTE "w", " ", "w", "w", "w", " ", "w", "w", "w", " ", "w"
+	   20 77 77 77 20
+	   77
+ 00000083  77 20 20 20 77				BYTE "w", " ", " ", " ", "w", " ", " ", " ", " ", " ", "w"
+	   20 20 20 20 20
+	   77
+ 0000008E  77 20 77 20 77				BYTE "w", " ", "w", " ", "w", "w", "w", " ", "w", "w", "w"
+	   77 77 20 77 77
+	   77
+ 00000099  77 20 77 20 20				BYTE "w", " ", "w", " ", " ", " ", " ", " ", "w", " ", "w"
+	   20 20 20 77 20
+	   77
+ 000000A4  77 20 77 20 77				BYTE "w", " ", "w", " ", "w", "w", "w", " ", "w", " ", "e"
+	   77 77 20 77 20
+	   65
+ 000000AF  77 20 20 20 20				BYTE "w", " ", " ", " ", " ", " ", " ", " ", " ", " ", "w"
+	   20 20 20 20 20
+	   77
+ 000000BA  77 20 77 77 77				BYTE "w", " ", "w", "w", "w", " ", "w", "w", "w", "w", "w"
+	   20 77 77 77 77
+	   77
+ 000000C5  77 20 20 20 20				BYTE "w", " ", " ", " ", " ", " ", " ", " ", " ", " ", "w"
+	   20 20 20 20 20
+	   77
+ 000000D0  77 77 77 77 77				BYTE "w", "w", "w", "w", "w", "w", "w", "w", "a", "w", "w"
+	   77 77 77 61 77
+	   77
+
+
+ 00000000			.code
+
+				;-------------------------------------------------------------------------------
+				;	Main function, initializes the game, and contains the main gameloop
+
+ 00000000			main proc
+
+					; initialize the board
+ 00000000  E8 000003C1			CALL		DrawMaze
+ 00000005  E8 00000000 E		CALL		CRLF
+
+					; calculate mazeheight
+ 0000000A  0F B7 05			MOVZX EAX, MAZESIZE
+	   0000005E R
+ 00000011  99				CDQ
+ 00000012  66| F7 35			DIV MAZEWIDTH
+	   0000005C R
+ 00000019  66| 87 05			XCHG AX, MAZEHEIGHT
+	   00000060 R
+
+					; find the agent starting position
+ 00000020  0F B7 0D			MOVZX ECX, mazeSize
+	   0000005E R
+ 00000027				L3:		
+ 00000027  8B D1				MOV		EDX, ECX
+ 00000029  0F B7 1D				MOVZX	EBX, mazeSize
+	   0000005E R
+ 00000030  2B DA				SUB		EBX, EDX
+ 00000032  0F B6 83				MOVZX	EAX,  [maze + EBX]
+	   00000062 R
+ 00000039  0F B6 15				MOVZX	EDX,	agent
+	   00000051 R
+ 00000040  3B C2				CMP		EAX, EDX
+ 00000042  74 13				JE agentFound		
+ 00000044  E2 E1			LOOP L3
+ 00000046  BA 00000000 R			MOV EDX, OFFSET AGENTERRORSTRING
+ 0000004B  E8 00000000 E			CALL CRLF
+ 00000050  E8 00000000 E			CALL WRITESTRING
+ 00000055  EB 55				JMP ENDSTATE
+					; set staring agent coordinates
+ 00000057				agentFound:
+ 00000057  8B C3				MOV EAX, EBX ; itt EBX = hanyadik mezoben vagyunk...
+ 00000059  86 05 00000055 R			XCHG AL, CURRENTPOSITION
+
+					; main loop
+ 0000005F  0F B7 05			MOVZX EAX, MAZESIZE
+	   0000005E R
+ 00000066  0F B7 15			MOVZX EDX, MAZESIZE
+	   0000005E R
+ 0000006D  03 D0			ADD EDX, EAX
+ 0000006F  8B CA			MOV ECX, EDX ; THE ALGORITHM SHOULD NEVER TAKE MORE STEPS THAN THE SQUARE OF A 2D MAZE SIZE
+ 00000071  83 C2 01			ADD EDX, 1
+ 00000074				mainLoop:
+ 00000074  52					PUSH EDX
+ 00000075  51					PUSH ECX
+ 00000076  E8 000000BC				CALL CHECKSURROUNDINGS
+ 0000007B  E8 00000346				CALL DRAWMAZE
+ 00000080  59					POP ECX
+ 00000081  5A					POP EDX
+ 00000082  92					XCHG EAX, EDX
+ 00000083  BA 0000003A R			MOV EDX, OFFSET NEWSTEPSTRING
+ 00000088  E8 00000000 E			CALL CRLF
+ 0000008D  E8 00000000 E			CALL WRITESTRING
+ 00000092  92					XCHG EAX, EDX
+ 00000093  8B C2				MOV EAX, EDX
+ 00000095  2B C1				SUB EAX, ECX
+ 00000097  E8 00000000 E			CALL WRITEINT
+ 0000009C  E8 00000000 E			CALL CRLF
+ 000000A1  80 3D 0000005B R			CMP GAMEOVER, 1
+	   01
+ 000000A8  74 02					JE ENDSTATE
+ 000000AA  E2 C8			LOOP mainLoop
+					; end of main loop
+
+ 000000AC				ENDSTATE:
+					INVOKE	ExitProcess,0
+ 000000AC  6A 00	   *	    push   +000000000h
+ 000000AE  E8 00000000 E   *	    call   ExitProcess
+ 000000B3			main endp
+
+				;!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+				;	Function to execute MOVE 
+				;	
+ 000000B3			MOVE	PROC
+
+ 000000B3  A0 00000055 R		MOV AL, CURRENTPOSITION
+ 000000B8  A2 00000057 R		MOV LASTPOSITION, AL
+ 000000BD  0F B6 05			MOVZX EAX, PLANNEDPOSITION
+	   00000056 R
+ 000000C4  8A 1D 00000051 R		MOV BL, AGENT
+ 000000CA  86 98 00000062 R		XCHG BL, [MAZE + EAX]
+ 000000D0  86 05 00000055 R		XCHG AL, CURRENTPOSITION
+ 000000D6  C3				RET
+
+ 000000D7			MOVE	ENDP
+
+				;!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+				;	Function to MARK THE CURRENT POSITION
+				;	
+ 000000D7			MARK	PROC
+
+ 000000D7  0F B6 05			MOVZX EAX, CURRENTPOSITION
+	   00000055 R
+ 000000DE  80 3D 0000005A R		CMP MARKLEVEL, 1
+	   01
+ 000000E5  75 08			JNE MARKLEVEL2
+ 000000E7  8A 1D 00000052 R			MOV BL, FIRST
+ 000000ED  EB 06				JMP	SETMARK
+ 000000EF				MARKLEVEL2:
+ 000000EF  8A 1D 00000053 R			MOV BL, SECOND
+ 000000F5				SETMARK:
+ 000000F5  86 98 00000062 R		XCHG BL, [MAZE + EAX]
+ 000000FB  C6 05 0000005A R		MOV MARKLEVEL, 1
+	   01
+ 00000102  C3				RET
+
+ 00000103			MARK ENDP
+
+				;!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+				;	Function to CALCULATE 2D ARRAY INDEX 
+				;	
+ 00000103			GETINDEX	PROC
+
+ 00000103  B8 00000000			MOV EAX, 0
+ 00000108  66| A1			MOV AX, AGENTY
+	   00000042 R
+ 0000010E  66| F7 25			MUL MAZEWIDTH
+	   0000005C R
+ 00000115  66| 03 05			ADD AX, AGENTX
+	   00000040 R
+
+ 0000011C  C3				RET
+
+ 0000011D			GETINDEX ENDP
+
+				;!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+				;	Function to CALCULATE agentX and agentY values from EAX 
+				;	
+ 0000011D			GETXY	PROC
+
+ 0000011D  BA 00000000				MOV EDX, 0
+ 00000122  66| F7 35				DIV mazeWidth	; ezutan AX-ben hogy hanyadik sor, DX-ben hogy hanyadik oszlop
+	   0000005C R
+ 00000129  66| 89 15				MOV agentX, DX
+	   00000040 R
+ 00000130  66| A3				MOV agentY, AX
+	   00000042 R
+					
+ 00000136  C3					RET
+ 00000137			GETXY ENDP
+
+				;!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+				;	Function to check surroundings
+				;	
+ 00000137			CheckSurroundings	PROC
+
+ 00000137  C6 05 00000059 R		MOV FIRSTPATHS, 0
+	   00
+
+ 0000013E  0F B6 05			MOVZX EAX, CURRENTPOSITION
+	   00000055 R
+ 00000145  E8 FFFFFFD3			CALL GETXY
+
+					;check north
+ 0000014A  A0 0000004E R		MOV AL, wall
+ 0000014F  86 05 00000044 R		XCHG AL, north ; base assumption, there is a wall to the north...
+ 00000155  0F B7 05			MOVZX EAX, agentY
+	   00000042 R
+ 0000015C  83 F8 00			CMP EAX, 0
+ 0000015F  74 27			JE northBorder ; if the north side is the maze border, jump over setting it, and leave it as a wall..
+ 00000161  83 E8 01			SUB EAX, 1
+ 00000164  66| F7 25			MUL mazeWidth
+	   0000005C R
+ 0000016B  66| 03 05			ADD AX, agentX
+	   00000040 R
+ 00000172  A2 00000056 R		MOV PLANNEDPOSITION, AL
+ 00000177  A2 00000048 R		MOV NORTHPOSITION, AL
+ 0000017C  8A 80 00000062 R		MOV AL, [maze + EAX]
+ 00000182  86 05 00000044 R		XCHG AL, north
+ 00000188				northBorder:
+
+					;check east
+ 00000188  A0 0000004E R		MOV AL, wall
+ 0000018D  86 05 00000045 R		XCHG AL, east ; base assumption, there is a wall to the east...
+ 00000193  0F B7 05			MOVZX EAX, agentX
+	   00000040 R
+ 0000019A  0F B7 15			MOVZX EDX, mazeWidth
+	   0000005C R
+ 000001A1  83 EA 01			SUB EDX, 1
+ 000001A4  3B C2			CMP EAX, EDX
+ 000001A6  74 2B			JE eastBorder ; if the east side is the maze border, jump over setting it, and leave it as a wall..
+ 000001A8  83 C0 01			ADD EAX, 1
+ 000001AB  8B D8			MOV EBX, EAX
+ 000001AD  0F B7 05			MOVZX EAX, agentY
+	   00000042 R
+ 000001B4  66| F7 25			MUL mazeWidth
+	   0000005C R
+ 000001BB  03 C3			ADD EAX, EBX
+ 000001BD  A2 00000056 R		MOV PLANNEDPOSITION, AL
+ 000001C2  A2 00000049 R		MOV EASTPOSITION, AL
+ 000001C7  8A 80 00000062 R		MOV AL, [maze + EAX]
+ 000001CD  86 05 00000045 R		XCHG AL, EAST
+ 000001D3				eastBorder:
+
+					;CHECK SOUTH
+ 000001D3  A0 0000004E R		MOV AL, wall
+ 000001D8  86 05 00000046 R		XCHG AL, SOUTH ; base assumption, there is a wall to the SOUTH...
+ 000001DE  0F B7 05			MOVZX EAX, agentY
+	   00000042 R
+ 000001E5  0F B7 15			MOVZX EDX, mazeWidth
+	   0000005C R
+ 000001EC  83 EA 01			SUB EDX, 1
+ 000001EF  3B C2			CMP EAX, EDX
+ 000001F1  74 27			JE southBorder ; if the SOUTH side is the maze border, jump over setting it, and leave it as a wall..
+ 000001F3  83 C0 01			ADD EAX, 1
+ 000001F6  66| F7 25			MUL mazeWidth
+	   0000005C R
+ 000001FD  66| 03 05			ADD AX, agentX	
+	   00000040 R
+ 00000204  A2 00000056 R		MOV PLANNEDPOSITION, AL
+ 00000209  A2 0000004A R		MOV SOUTHPOSITION, AL
+ 0000020E  8A 80 00000062 R		MOV AL, [maze + EAX]
+ 00000214  86 05 00000046 R		XCHG AL, SOUTH
+ 0000021A				southBorder:
+
+					;check WEST
+ 0000021A  A0 0000004E R		MOV AL, wall
+ 0000021F  86 05 00000047 R		XCHG AL, WEST ; base assumption, there is a wall to the WEST...
+ 00000225  0F B7 05			MOVZX EAX, agentX
+	   00000040 R
+ 0000022C  83 F8 00			CMP EAX, 0
+ 0000022F  74 2B			JE westBorder ; if the WEST side is the maze border, jump over setting it, and leave it as a wall..
+ 00000231  83 E8 01			SUB EAX, 1
+ 00000234  8B D8			MOV EBX, EAX
+ 00000236  0F B7 05			MOVZX EAX, agentY
+	   00000042 R
+ 0000023D  66| F7 25			MUL mazeWidth
+	   0000005C R
+ 00000244  03 C3			ADD EAX, EBX
+ 00000246  A2 00000056 R		MOV PLANNEDPOSITION, AL
+ 0000024B  A2 0000004B R		MOV WESTPOSITION, AL
+ 00000250  8A 80 00000062 R		MOV AL, [maze + EAX]
+ 00000256  86 05 00000047 R		XCHG AL, WEST
+ 0000025C				westBorder:
+					
+					;CHECK IF NORTH IS EMPTY PATH
+ 0000025C  A0 00000048 R		MOV AL, NORTHPOSITION
+ 00000261  86 05 00000056 R		XCHG AL, PLANNEDPOSITION
+ 00000267  A0 00000044 R		MOV AL, NORTH
+ 0000026C  3A 05 0000004F R		CMP AL, FLOOR
+ 00000272  74 11			JE NORTHISFLOOR
+ 00000274  3A 05 00000050 R		CMP AL, GOAL
+ 0000027A  74 02			JE NORTHISEND
+ 0000027C  EB 0C			JMP NORTHISNOTFLOOR
+ 0000027E					NORTHISEND:
+ 0000027E  C6 05 0000005B R			MOV GAMEOVER, 1
+	   01
+ 00000285					NORTHISFLOOR:
+ 00000285  E9 0000011E				JMP FINALLY
+ 0000028A				NORTHISNOTFLOOR:
+
+					;CHECK IF EAST IS EMPTY PATH
+ 0000028A  A0 00000049 R		MOV AL, EASTPOSITION
+ 0000028F  86 05 00000056 R		XCHG AL, PLANNEDPOSITION
+ 00000295  A0 00000045 R		MOV AL, EAST
+ 0000029A  3A 05 0000004F R		CMP AL, FLOOR
+ 000002A0  74 11			JE EASTISFLOOR
+ 000002A2  3A 05 00000050 R		CMP AL, GOAL
+ 000002A8  74 02			JE EASTISEND
+ 000002AA  EB 0C			JMP EASTISNOTFLOOR
+ 000002AC					EASTISEND:
+ 000002AC  C6 05 0000005B R			MOV GAMEOVER, 1
+	   01
+ 000002B3					EASTISFLOOR:
+ 000002B3  E9 000000F0				JMP FINALLY
+ 000002B8				EASTISNOTFLOOR:
+					
+					;CHECK IF SOUTH IS EMPTY PATH
+ 000002B8  A0 0000004A R		MOV AL, SOUTHPOSITION
+ 000002BD  86 05 00000056 R		XCHG AL, PLANNEDPOSITION
+ 000002C3  A0 00000046 R		MOV AL, SOUTH
+ 000002C8  3A 05 0000004F R		CMP AL, FLOOR
+ 000002CE  74 11			JE SOUTHISFLOOR
+ 000002D0  3A 05 00000050 R		CMP AL, GOAL
+ 000002D6  74 02			JE SOUTHISEND
+ 000002D8  EB 0C			JMP SOUTHISNOTFLOOR
+ 000002DA					SOUTHISEND:
+ 000002DA  C6 05 0000005B R			MOV GAMEOVER, 1
+	   01
+ 000002E1					SOUTHISFLOOR:
+ 000002E1  E9 000000C2				JMP FINALLY
+ 000002E6				SOUTHISNOTFLOOR:
+
+					;CHECK IF WEST IS EMPTY PATH
+ 000002E6  A0 0000004B R		MOV AL, WESTPOSITION
+ 000002EB  86 05 00000056 R		XCHG AL, PLANNEDPOSITION
+ 000002F1  A0 00000047 R		MOV AL, WEST
+ 000002F6  3A 05 0000004F R		CMP AL, FLOOR
+ 000002FC  74 11			JE WESTISFLOOR
+ 000002FE  3A 05 00000050 R		CMP AL, GOAL
+ 00000304  74 02			JE WESTISEND
+ 00000306  EB 0C			JMP WESTISNOTFLOOR
+ 00000308					WESTISEND:
+ 00000308  C6 05 0000005B R			MOV GAMEOVER, 1
+	   01
+ 0000030F					WESTISFLOOR:
+ 0000030F  E9 00000094				JMP FINALLY
+ 00000314				WESTISNOTFLOOR:
+
+					; IF WE ARE HERE, NO EMPTY FLOORS WERE FOUND...
+ 00000314  C6 05 0000005A R		MOV MARKLEVEL, 2
+	   02
+					;CHECK IF NORTH IS FIRST PATH
+ 0000031B  A0 00000044 R		MOV AL, NORTH
+ 00000320  3A 05 00000052 R		CMP AL, FIRST
+ 00000326  75 12			JNE NORTHISNOTFIRST
+ 00000328  86 05 00000048 R			XCHG AL, NORTHPOSITION
+ 0000032E  A2 00000056 R			MOV PLANNEDPOSITION, AL
+ 00000333  80 05 00000059 R			ADD FIRSTPATHS, 1
+	   01
+ 0000033A				NORTHISNOTFIRST:
+
+					;CHECK IF EAST IS FIRST PATH
+ 0000033A  A0 00000045 R		MOV AL, EAST
+ 0000033F  3A 05 00000052 R		CMP AL, FIRST
+ 00000345  75 12			JNE EASTISNOTFIRST
+ 00000347  86 05 00000049 R			XCHG AL, EASTPOSITION
+ 0000034D  A2 00000056 R			MOV PLANNEDPOSITION, AL
+ 00000352  80 05 00000059 R			ADD FIRSTPATHS, 1
+	   01
+ 00000359				EASTISNOTFIRST:
+
+					;CHECK IF SOUTH IS FIRST PATH
+ 00000359  A0 00000046 R		MOV AL, SOUTH
+ 0000035E  3A 05 00000052 R		CMP AL, FIRST
+ 00000364  75 12			JNE SOUTHISNOTFIRST
+ 00000366  86 05 0000004A R			XCHG AL, SOUTHPOSITION
+ 0000036C  A2 00000056 R			MOV PLANNEDPOSITION, AL
+ 00000371  80 05 00000059 R			ADD FIRSTPATHS, 1
+	   01
+ 00000378				SOUTHISNOTFIRST:
+
+					;CHECK IF WEST IS FIRST PATH
+ 00000378  A0 00000047 R		MOV AL, WEST
+ 0000037D  3A 05 00000052 R		CMP AL, FIRST
+ 00000383  75 12			JNE WESTISNOTFIRST
+ 00000385  86 05 0000004B R			XCHG AL, WESTPOSITION
+ 0000038B  A2 00000056 R			MOV PLANNEDPOSITION, AL
+ 00000390  80 05 00000059 R			ADD FIRSTPATHS, 1
+	   01
+ 00000397				WESTISNOTFIRST:
+
+ 00000397  80 3D 00000059 R		CMP FIRSTPATHS, 0
+	   00
+ 0000039E  75 08			JNE FINALLY
+ 000003A0  C6 05 0000005B R			MOV GAMEOVER, 1
+	   01
+ 000003A7  C3					RET
+
+
+
+ 000003A8				FINALLY:
+ 000003A8  80 3D 00000059 R		CMP FIRSTPATHS, 2
+	   02
+ 000003AF  75 0A			JNE	CORRIDOR
+ 000003B1  A0 00000057 R			MOV AL, LASTPOSITION
+ 000003B6  A2 00000056 R			MOV PLANNEDPOSITION, AL
+ 000003BB				CORRIDOR:
+ 000003BB  E8 FFFFFD17				CALL MARK
+ 000003C0  E8 FFFFFCEE				CALL MOVE
+ 000003C5  C3				RET
+
+ 000003C6			CheckSurroundings	ENDP
+
+
+				;!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+				;	Function to draw the actual maze onto the console
+				;	
+ 000003C6			DrawMaze	PROC
+
+					; Loop through the maze array
+ 000003C6  0F B7 0D			MOVZX ECX, mazeSize
+	   0000005E R
+ 000003CD				L1:
+						; if end of the line, insert linefeed
+ 000003CD  8B D9				MOV EBX, ECX
+ 000003CF  0F B7 05				MOVZX EAX, mazeSize
+	   0000005E R
+ 000003D6  2B C3				SUB EAX, EBX
+ 000003D8  99					CDQ
+ 000003D9  66| F7 35				DIV mazeWidth
+	   0000005C R
+ 000003E0  66| 83 FA 00				CMP DX, 0
+ 000003E4  75 05				JNE else2
+ 000003E6  E8 00000000 E			CALL Crlf
+
+ 000003EB					else2:
+ 000003EB  8B D1				MOV EDX, ECX
+ 000003ED  0F B7 1D				MOVZX EBX, mazeSize
+	   0000005E R
+ 000003F4  2B DA				SUB EBX, EDX
+ 000003F6  0F B6 83				MOVZX EAX,  [maze + EBX]
+	   00000062 R
+ 000003FD  0F B6 1D				MOVZX EBX,	wall
+	   0000004E R
+						; if current position is wall, drawWall
+ 00000404  3B D8				CMP EBX, EAX
+ 00000406  75 07				JNE else1
+ 00000408  E8 0000000A				CALL DrawWall
+ 0000040D  EB 05				JMP continue
+						; else if floor..
+ 0000040F					else1:
+						;MOV AL, floor
+ 0000040F  E8 00000000 E			CALL WriteChar
+ 00000414					continue:
+ 00000414  E2 B7			LOOP L1
+
+						
+					
+ 00000416  C3				RET
+ 00000417			DrawMaze ENDP
+
+ 00000417			DrawWall PROC USES EAX 
+
+					; this part makes the char a block of solid color...
+ 00000417  50		   *	    push   eax
+ 00000418  0F B6 05			MOVZX EAX, color
+	   0000004C R
+ 0000041F  C1 E0 04			SHL EAX, 4
+ 00000422  0A 05 0000004C R		OR AL, color
+ 00000428  E8 00000000 E		CALL SetTextColor 
+
+ 0000042D  A0 0000004E R		MOV AL, wall
+ 00000432  E8 00000000 E		call WriteChar
+
+					; this part changes back the background to black, for further prints
+ 00000437  0F B6 05			MOVZX EAX, backgroundColor
+	   0000004D R
+ 0000043E  C1 E0 04			SHL EAX, 4
+ 00000441  0A 05 0000004C R		OR AL, color
+ 00000447  E8 00000000 E		CALL SetTextColor
+
+
+					RET
+ 0000044C  58		   *	    pop    eax
+ 0000044D  C3		   *	    ret    00000h
+ 0000044E			DrawWall ENDP
+
+				;===============================================================================
+				.stack
+ 0000044E  000003E8 [					dw		1000	dup	(?)
+	    0000
+	   ]
+
+				end main
+Microsoft (R) Macro Assembler Version 14.00.24210.0	    05/12/18 22:36:29
+HB_beadando.asm						     Symbols 2 - 1
+
+
+
+
+Structures and Unions:
+
+                N a m e                  Size
+                                         Offset      Type
+
+CONSOLE_CURSOR_INFO  . . . . . .	 00000008
+  dwSize . . . . . . . . . . . .	 00000000	 DWord
+  bVisible . . . . . . . . . . .	 00000004	 DWord
+CONSOLE_SCREEN_BUFFER_INFO . . .	 00000016
+  dwSize . . . . . . . . . . . .	 00000000	 DWord
+  dwCursorPosition . . . . . . .	 00000004	 DWord
+  wAttributes  . . . . . . . . .	 00000008	 Word
+  srWindow . . . . . . . . . . .	 0000000A	 QWord
+  dwMaximumWindowSize  . . . . .	 00000012	 DWord
+COORD  . . . . . . . . . . . . .	 00000004
+  X  . . . . . . . . . . . . . .	 00000000	 Word
+  Y  . . . . . . . . . . . . . .	 00000002	 Word
+FILETIME . . . . . . . . . . . .	 00000008
+  loDateTime . . . . . . . . . .	 00000000	 DWord
+  hiDateTime . . . . . . . . . .	 00000004	 DWord
+FOCUS_EVENT_RECORD . . . . . . .	 00000004
+  bSetFocus  . . . . . . . . . .	 00000000	 DWord
+FPU_ENVIRON  . . . . . . . . . .	 0000001C
+  controlWord  . . . . . . . . .	 00000000	 Word
+  statusWord . . . . . . . . . .	 00000004	 Word
+  tagWord  . . . . . . . . . . .	 00000008	 Word
+  instrPointerOffset . . . . . .	 0000000C	 DWord
+  instrPointerSelector . . . . .	 00000010	 DWord
+  operandPointerOffset . . . . .	 00000014	 DWord
+  operandPointerSelector . . . .	 00000018	 Word
+INPUT_RECORD . . . . . . . . . .	 00000014
+  EventType  . . . . . . . . . .	 00000000	 Word
+  Event  . . . . . . . . . . . .	 00000004	 XmmWord
+  bKeyDown . . . . . . . . . . .	 00000000	 DWord
+  wRepeatCount . . . . . . . . .	 00000004	 Word
+  wVirtualKeyCode  . . . . . . .	 00000006	 Word
+  wVirtualScanCode . . . . . . .	 00000008	 Word
+  uChar  . . . . . . . . . . . .	 0000000A	 Word
+  UnicodeChar  . . . . . . . . .	 00000000	 Word
+  AsciiChar  . . . . . . . . . .	 00000000	 Byte
+  dwControlKeyState  . . . . . .	 0000000C	 DWord
+  dwMousePosition  . . . . . . .	 00000000	 DWord
+  dwButtonState  . . . . . . . .	 00000004	 DWord
+  dwMouseControlKeyState . . . .	 00000008	 DWord
+  dwEventFlags . . . . . . . . .	 0000000C	 DWord
+  dwSize . . . . . . . . . . . .	 00000000	 DWord
+  dwCommandId  . . . . . . . . .	 00000000	 DWord
+  bSetFocus  . . . . . . . . . .	 00000000	 DWord
+KEY_EVENT_RECORD . . . . . . . .	 00000010
+  bKeyDown . . . . . . . . . . .	 00000000	 DWord
+  wRepeatCount . . . . . . . . .	 00000004	 Word
+  wVirtualKeyCode  . . . . . . .	 00000006	 Word
+  wVirtualScanCode . . . . . . .	 00000008	 Word
+  uChar  . . . . . . . . . . . .	 0000000A	 Word
+  UnicodeChar  . . . . . . . . .	 00000000	 Word
+  AsciiChar  . . . . . . . . . .	 00000000	 Byte
+  dwControlKeyState  . . . . . .	 0000000C	 DWord
+MENU_EVENT_RECORD  . . . . . . .	 00000004
+  dwCommandId  . . . . . . . . .	 00000000	 DWord
+MOUSE_EVENT_RECORD . . . . . . .	 00000010
+  dwMousePosition  . . . . . . .	 00000000	 DWord
+  dwButtonState  . . . . . . . .	 00000004	 DWord
+  dwMouseControlKeyState . . . .	 00000008	 DWord
+  dwEventFlags . . . . . . . . .	 0000000C	 DWord
+SMALL_RECT . . . . . . . . . . .	 00000008
+  Left . . . . . . . . . . . . .	 00000000	 Word
+  Top  . . . . . . . . . . . . .	 00000002	 Word
+  Right  . . . . . . . . . . . .	 00000004	 Word
+  Bottom . . . . . . . . . . . .	 00000006	 Word
+SYSTEMTIME . . . . . . . . . . .	 00000010
+  wYear  . . . . . . . . . . . .	 00000000	 Word
+  wMonth . . . . . . . . . . . .	 00000002	 Word
+  wDayOfWeek . . . . . . . . . .	 00000004	 Word
+  wDay . . . . . . . . . . . . .	 00000006	 Word
+  wHour  . . . . . . . . . . . .	 00000008	 Word
+  wMinute  . . . . . . . . . . .	 0000000A	 Word
+  wSecond  . . . . . . . . . . .	 0000000C	 Word
+  wMilliseconds  . . . . . . . .	 0000000E	 Word
+WINDOW_BUFFER_SIZE_RECORD  . . .	 00000004
+  dwSize . . . . . . . . . . . .	 00000000	 DWord
+
+
+Segments and Groups:
+
+                N a m e                 Size     Length   Align   Combine Class
+
+FLAT . . . . . . . . . . . . . .	GROUP
+STACK  . . . . . . . . . . . . .	32 Bit	 00001000 Para	  Stack	  'STACK'	 
+_DATA  . . . . . . . . . . . . .	32 Bit	 000000DB Para	  Public  'DATA'	
+_TEXT  . . . . . . . . . . . . .	32 Bit	 00000C1E Para	  Public  'CODE'	
+
+
+Procedures, parameters, and locals:
+
+                N a m e                 Type     Value    Attr
+
+CheckSurroundings  . . . . . . .	P Near	 00000137 _TEXT	Length= 0000028F Public STDCALL
+  northBorder  . . . . . . . . .	L Near	 00000188 _TEXT	
+  eastBorder . . . . . . . . . .	L Near	 000001D3 _TEXT	
+  southBorder  . . . . . . . . .	L Near	 0000021A _TEXT	
+  westBorder . . . . . . . . . .	L Near	 0000025C _TEXT	
+  NORTHISEND . . . . . . . . . .	L Near	 0000027E _TEXT	
+  NORTHISFLOOR . . . . . . . . .	L Near	 00000285 _TEXT	
+  NORTHISNOTFLOOR  . . . . . . .	L Near	 0000028A _TEXT	
+  EASTISEND  . . . . . . . . . .	L Near	 000002AC _TEXT	
+  EASTISFLOOR  . . . . . . . . .	L Near	 000002B3 _TEXT	
+  EASTISNOTFLOOR . . . . . . . .	L Near	 000002B8 _TEXT	
+  SOUTHISEND . . . . . . . . . .	L Near	 000002DA _TEXT	
+  SOUTHISFLOOR . . . . . . . . .	L Near	 000002E1 _TEXT	
+  SOUTHISNOTFLOOR  . . . . . . .	L Near	 000002E6 _TEXT	
+  WESTISEND  . . . . . . . . . .	L Near	 00000308 _TEXT	
+  WESTISFLOOR  . . . . . . . . .	L Near	 0000030F _TEXT	
+  WESTISNOTFLOOR . . . . . . . .	L Near	 00000314 _TEXT	
+  NORTHISNOTFIRST  . . . . . . .	L Near	 0000033A _TEXT	
+  EASTISNOTFIRST . . . . . . . .	L Near	 00000359 _TEXT	
+  SOUTHISNOTFIRST  . . . . . . .	L Near	 00000378 _TEXT	
+  WESTISNOTFIRST . . . . . . . .	L Near	 00000397 _TEXT	
+  FINALLY  . . . . . . . . . . .	L Near	 000003A8 _TEXT	
+  CORRIDOR . . . . . . . . . . .	L Near	 000003BB _TEXT	
+CloseFile  . . . . . . . . . . .	P Near	 00000000 FLAT	Length= 00000000 External STDCALL
+CloseHandle  . . . . . . . . . .	P Near	 00000000 FLAT	Length= 00000000 External STDCALL
+Clrscr . . . . . . . . . . . . .	P Near	 00000000 FLAT	Length= 00000000 External STDCALL
+CreateFileA  . . . . . . . . . .	P Near	 00000000 FLAT	Length= 00000000 External STDCALL
+CreateOutputFile . . . . . . . .	P Near	 00000000 FLAT	Length= 00000000 External STDCALL
+Crlf . . . . . . . . . . . . . .	P Near	 00000000 FLAT	Length= 00000000 External STDCALL
+Delay  . . . . . . . . . . . . .	P Near	 00000000 FLAT	Length= 00000000 External STDCALL
+DrawMaze . . . . . . . . . . . .	P Near	 000003C6 _TEXT	Length= 00000051 Public STDCALL
+  L1 . . . . . . . . . . . . . .	L Near	 000003CD _TEXT	
+  else2  . . . . . . . . . . . .	L Near	 000003EB _TEXT	
+  else1  . . . . . . . . . . . .	L Near	 0000040F _TEXT	
+  continue . . . . . . . . . . .	L Near	 00000414 _TEXT	
+DrawWall . . . . . . . . . . . .	P Near	 00000417 _TEXT	Length= 00000037 Public STDCALL
+DumpMem  . . . . . . . . . . . .	P Near	 00000000 FLAT	Length= 00000000 External STDCALL
+DumpRegs . . . . . . . . . . . .	P Near	 00000000 FLAT	Length= 00000000 External STDCALL
+ExitProcess  . . . . . . . . . .	P Near	 00000000 FLAT	Length= 00000000 External STDCALL
+FileTimeToDosDateTime  . . . . .	P Near	 00000000 FLAT	Length= 00000000 External STDCALL
+FileTimeToSystemTime . . . . . .	P Near	 00000000 FLAT	Length= 00000000 External STDCALL
+FlushConsoleInputBuffer  . . . .	P Near	 00000000 FLAT	Length= 00000000 External STDCALL
+FormatMessageA . . . . . . . . .	P Near	 00000000 FLAT	Length= 00000000 External STDCALL
+GETINDEX . . . . . . . . . . . .	P Near	 00000103 _TEXT	Length= 0000001A Public STDCALL
+GETXY  . . . . . . . . . . . . .	P Near	 0000011D _TEXT	Length= 0000001A Public STDCALL
+GetCommandLineA  . . . . . . . .	P Near	 00000000 FLAT	Length= 00000000 External STDCALL
+GetCommandTail . . . . . . . . .	P Near	 00000000 FLAT	Length= 00000000 External STDCALL
+GetConsoleCP . . . . . . . . . .	P Near	 00000000 FLAT	Length= 00000000 External STDCALL
+GetConsoleCursorInfo . . . . . .	P Near	 00000000 FLAT	Length= 00000000 External STDCALL
+GetConsoleMode . . . . . . . . .	P Near	 00000000 FLAT	Length= 00000000 External STDCALL
+GetConsoleScreenBufferInfo . . .	P Near	 00000000 FLAT	Length= 00000000 External STDCALL
+GetDateTime  . . . . . . . . . .	P Near	 00000000 FLAT	Length= 00000000 External STDCALL
+GetFileTime  . . . . . . . . . .	P Near	 00000000 FLAT	Length= 00000000 External STDCALL
+GetKeyState  . . . . . . . . . .	P Near	 00000000 FLAT	Length= 00000000 External STDCALL
+GetLastError . . . . . . . . . .	P Near	 00000000 FLAT	Length= 00000000 External STDCALL
+GetLocalTime . . . . . . . . . .	P Near	 00000000 FLAT	Length= 00000000 External STDCALL
+GetMaxXY . . . . . . . . . . . .	P Near	 00000000 FLAT	Length= 00000000 External STDCALL
+GetMseconds  . . . . . . . . . .	P Near	 00000000 FLAT	Length= 00000000 External STDCALL
+GetNumberOfConsoleInputEvents  .	P Near	 00000000 FLAT	Length= 00000000 External STDCALL
+GetProcessHeap . . . . . . . . .	P Near	 00000000 FLAT	Length= 00000000 External STDCALL
+GetStdHandle . . . . . . . . . .	P Near	 00000000 FLAT	Length= 00000000 External STDCALL
+GetSystemTime  . . . . . . . . .	P Near	 00000000 FLAT	Length= 00000000 External STDCALL
+GetTextColor . . . . . . . . . .	P Near	 00000000 FLAT	Length= 00000000 External STDCALL
+GetTickCount . . . . . . . . . .	P Near	 00000000 FLAT	Length= 00000000 External STDCALL
+Gotoxy . . . . . . . . . . . . .	P Near	 00000000 FLAT	Length= 00000000 External STDCALL
+HeapAlloc  . . . . . . . . . . .	P Near	 00000000 FLAT	Length= 00000000 External STDCALL
+HeapCreate . . . . . . . . . . .	P Near	 00000000 FLAT	Length= 00000000 External STDCALL
+HeapDestroy  . . . . . . . . . .	P Near	 00000000 FLAT	Length= 00000000 External STDCALL
+HeapFree . . . . . . . . . . . .	P Near	 00000000 FLAT	Length= 00000000 External STDCALL
+HeapSize . . . . . . . . . . . .	P Near	 00000000 FLAT	Length= 00000000 External STDCALL
+IsDigit  . . . . . . . . . . . .	P Near	 00000000 FLAT	Length= 00000000 External STDCALL
+LocalFree  . . . . . . . . . . .	P Near	 00000000 FLAT	Length= 00000000 External STDCALL
+MARK . . . . . . . . . . . . . .	P Near	 000000D7 _TEXT	Length= 0000002C Public STDCALL
+  MARKLEVEL2 . . . . . . . . . .	L Near	 000000EF _TEXT	
+  SETMARK  . . . . . . . . . . .	L Near	 000000F5 _TEXT	
+MOVE . . . . . . . . . . . . . .	P Near	 000000B3 _TEXT	Length= 00000024 Public STDCALL
+MessageBoxA  . . . . . . . . . .	P Near	 00000000 FLAT	Length= 00000000 External STDCALL
+MsgBoxAsk  . . . . . . . . . . .	P Near	 00000000 FLAT	Length= 00000000 External STDCALL
+MsgBox . . . . . . . . . . . . .	P Near	 00000000 FLAT	Length= 00000000 External STDCALL
+OpenInputFile  . . . . . . . . .	P Near	 00000000 FLAT	Length= 00000000 External STDCALL
+ParseDecimal32 . . . . . . . . .	P Near	 00000000 FLAT	Length= 00000000 External STDCALL
+ParseInteger32 . . . . . . . . .	P Near	 00000000 FLAT	Length= 00000000 External STDCALL
+PeekConsoleInputA  . . . . . . .	P Near	 00000000 FLAT	Length= 00000000 External STDCALL
+Random32 . . . . . . . . . . . .	P Near	 00000000 FLAT	Length= 00000000 External STDCALL
+RandomRange  . . . . . . . . . .	P Near	 00000000 FLAT	Length= 00000000 External STDCALL
+Randomize  . . . . . . . . . . .	P Near	 00000000 FLAT	Length= 00000000 External STDCALL
+ReadChar . . . . . . . . . . . .	P Near	 00000000 FLAT	Length= 00000000 External STDCALL
+ReadConsoleA . . . . . . . . . .	P Near	 00000000 FLAT	Length= 00000000 External STDCALL
+ReadConsoleInputA  . . . . . . .	P Near	 00000000 FLAT	Length= 00000000 External STDCALL
+ReadDec  . . . . . . . . . . . .	P Near	 00000000 FLAT	Length= 00000000 External STDCALL
+ReadFile . . . . . . . . . . . .	P Near	 00000000 FLAT	Length= 00000000 External STDCALL
+ReadFloat  . . . . . . . . . . .	P Near	 00000000 FLAT	Length= 00000000 External STDCALL
+ReadFromFile . . . . . . . . . .	P Near	 00000000 FLAT	Length= 00000000 External STDCALL
+ReadHex  . . . . . . . . . . . .	P Near	 00000000 FLAT	Length= 00000000 External STDCALL
+ReadInt  . . . . . . . . . . . .	P Near	 00000000 FLAT	Length= 00000000 External STDCALL
+ReadKeyFlush . . . . . . . . . .	P Near	 00000000 FLAT	Length= 00000000 External STDCALL
+ReadKey  . . . . . . . . . . . .	P Near	 00000000 FLAT	Length= 00000000 External STDCALL
+ReadString . . . . . . . . . . .	P Near	 00000000 FLAT	Length= 00000000 External STDCALL
+SetConsoleCursorInfo . . . . . .	P Near	 00000000 FLAT	Length= 00000000 External STDCALL
+SetConsoleCursorPosition . . . .	P Near	 00000000 FLAT	Length= 00000000 External STDCALL
+SetConsoleMode . . . . . . . . .	P Near	 00000000 FLAT	Length= 00000000 External STDCALL
+SetConsoleScreenBufferSize . . .	P Near	 00000000 FLAT	Length= 00000000 External STDCALL
+SetConsoleTextAttribute  . . . .	P Near	 00000000 FLAT	Length= 00000000 External STDCALL
+SetConsoleTitleA . . . . . . . .	P Near	 00000000 FLAT	Length= 00000000 External STDCALL
+SetConsoleWindowInfo . . . . . .	P Near	 00000000 FLAT	Length= 00000000 External STDCALL
+SetFilePointer . . . . . . . . .	P Near	 00000000 FLAT	Length= 00000000 External STDCALL
+SetLocalTime . . . . . . . . . .	P Near	 00000000 FLAT	Length= 00000000 External STDCALL
+SetTextColor . . . . . . . . . .	P Near	 00000000 FLAT	Length= 00000000 External STDCALL
+ShowFPUStack . . . . . . . . . .	P Near	 00000000 FLAT	Length= 00000000 External STDCALL
+Sleep  . . . . . . . . . . . . .	P Near	 00000000 FLAT	Length= 00000000 External STDCALL
+StrLength  . . . . . . . . . . .	P Near	 00000000 FLAT	Length= 00000000 External STDCALL
+Str_compare  . . . . . . . . . .	P Near	 00000000 FLAT	Length= 00000000 External STDCALL
+Str_copy . . . . . . . . . . . .	P Near	 00000000 FLAT	Length= 00000000 External STDCALL
+Str_length . . . . . . . . . . .	P Near	 00000000 FLAT	Length= 00000000 External STDCALL
+Str_trim . . . . . . . . . . . .	P Near	 00000000 FLAT	Length= 00000000 External STDCALL
+Str_ucase  . . . . . . . . . . .	P Near	 00000000 FLAT	Length= 00000000 External STDCALL
+SystemTimeToFileTime . . . . . .	P Near	 00000000 FLAT	Length= 00000000 External STDCALL
+WaitMsg  . . . . . . . . . . . .	P Near	 00000000 FLAT	Length= 00000000 External STDCALL
+WriteBinB  . . . . . . . . . . .	P Near	 00000000 FLAT	Length= 00000000 External STDCALL
+WriteBin . . . . . . . . . . . .	P Near	 00000000 FLAT	Length= 00000000 External STDCALL
+WriteChar  . . . . . . . . . . .	P Near	 00000000 FLAT	Length= 00000000 External STDCALL
+WriteConsoleA  . . . . . . . . .	P Near	 00000000 FLAT	Length= 00000000 External STDCALL
+WriteConsoleOutputAttribute  . .	P Near	 00000000 FLAT	Length= 00000000 External STDCALL
+WriteConsoleOutputCharacterA . .	P Near	 00000000 FLAT	Length= 00000000 External STDCALL
+WriteDec . . . . . . . . . . . .	P Near	 00000000 FLAT	Length= 00000000 External STDCALL
+WriteFile  . . . . . . . . . . .	P Near	 00000000 FLAT	Length= 00000000 External STDCALL
+WriteFloat . . . . . . . . . . .	P Near	 00000000 FLAT	Length= 00000000 External STDCALL
+WriteHexB  . . . . . . . . . . .	P Near	 00000000 FLAT	Length= 00000000 External STDCALL
+WriteHex . . . . . . . . . . . .	P Near	 00000000 FLAT	Length= 00000000 External STDCALL
+WriteInt . . . . . . . . . . . .	P Near	 00000000 FLAT	Length= 00000000 External STDCALL
+WriteStackFrameName  . . . . . .	P Near	 00000000 FLAT	Length= 00000000 External STDCALL
+WriteStackFrame  . . . . . . . .	P Near	 00000000 FLAT	Length= 00000000 External STDCALL
+WriteString  . . . . . . . . . .	P Near	 00000000 FLAT	Length= 00000000 External STDCALL
+WriteToFile  . . . . . . . . . .	P Near	 00000000 FLAT	Length= 00000000 External STDCALL
+WriteWindowsMsg  . . . . . . . .	P Near	 00000000 FLAT	Length= 00000000 External STDCALL
+main . . . . . . . . . . . . . .	P Near	 00000000 _TEXT	Length= 000000B3 Public STDCALL
+  L3 . . . . . . . . . . . . . .	L Near	 00000027 _TEXT	
+  agentFound . . . . . . . . . .	L Near	 00000057 _TEXT	
+  mainLoop . . . . . . . . . . .	L Near	 00000074 _TEXT	
+  ENDSTATE . . . . . . . . . . .	L Near	 000000AC _TEXT	
+printf . . . . . . . . . . . . .	P Near	 00000000 FLAT	Length= 00000000 External C
+scanf  . . . . . . . . . . . . .	P Near	 00000000 FLAT	Length= 00000000 External C
+wsprintfA  . . . . . . . . . . .	P Near	 00000000 FLAT	Length= 00000000 External C
+
+
+Symbols:
+
+                N a m e                 Type     Value    Attr
+
+@CodeSize  . . . . . . . . . . .	Number	 00000000h   
+@DataSize  . . . . . . . . . . .	Number	 00000000h   
+@Interface . . . . . . . . . . .	Number	 00000003h   
+@Model . . . . . . . . . . . . .	Number	 00000007h   
+@code  . . . . . . . . . . . . .	Text   	 _TEXT
+@data  . . . . . . . . . . . . .	Text   	 FLAT
+@fardata?  . . . . . . . . . . .	Text   	 FLAT
+@fardata . . . . . . . . . . . .	Text   	 FLAT
+@stack . . . . . . . . . . . . .	Text   	 FLAT
+ALT_MASK . . . . . . . . . . . .	Number	 00000003h   
+CAPSLOCK_ON  . . . . . . . . . .	Number	 00000080h   
+CREATE_ALWAYS  . . . . . . . . .	Number	 00000002h   
+CREATE_NEW . . . . . . . . . . .	Number	 00000001h   
+CTRL_MASK  . . . . . . . . . . .	Number	 0000000Ch   
+CreateFile . . . . . . . . . . .	Text   	 CreateFileA
+DO_NOT_SHARE . . . . . . . . . .	Number	 00000000h   
+EASTPOSITION . . . . . . . . . .	Byte	 00000049 _DATA	
+ENABLE_ECHO_INPUT  . . . . . . .	Number	 00000004h   
+ENABLE_LINE_INPUT  . . . . . . .	Number	 00000002h   
+ENABLE_MOUSE_INPUT . . . . . . .	Number	 00000010h   
+ENABLE_PROCESSED_INPUT . . . . .	Number	 00000001h   
+ENABLE_PROCESSED_OUTPUT  . . . .	Number	 00000001h   
+ENABLE_WINDOW_INPUT  . . . . . .	Number	 00000008h   
+ENABLE_WRAP_AT_EOL_OUTPUT  . . .	Number	 00000002h   
+ENHANCED_KEY . . . . . . . . . .	Number	 00000100h   
+FALSE  . . . . . . . . . . . . .	Number	 00000000h   
+FILE_APPEND_DATA . . . . . . . .	Number	 00000004h   
+FILE_ATTRIBUTE_ARCHIVE . . . . .	Number	 00000020h   
+FILE_ATTRIBUTE_COMPRESSED  . . .	Number	 00000800h   
+FILE_ATTRIBUTE_DEVICE  . . . . .	Number	 00000040h   
+FILE_ATTRIBUTE_DIRECTORY . . . .	Number	 00000010h   
+FILE_ATTRIBUTE_ENCRYPTED . . . .	Number	 00004000h   
+FILE_ATTRIBUTE_HIDDEN  . . . . .	Number	 00000002h   
+FILE_ATTRIBUTE_NORMAL  . . . . .	Number	 00000080h   
+FILE_ATTRIBUTE_NOT_CONTENT_INDEXED .	Number	 00002000h   
+FILE_ATTRIBUTE_OFFLINE . . . . .	Number	 00001000h   
+FILE_ATTRIBUTE_READONLY  . . . .	Number	 00000001h   
+FILE_ATTRIBUTE_REPARSE_POINT . .	Number	 00000400h   
+FILE_ATTRIBUTE_SPARSE_FILE . . .	Number	 00000200h   
+FILE_ATTRIBUTE_SYSTEM  . . . . .	Number	 00000004h   
+FILE_ATTRIBUTE_TEMPORARY . . . .	Number	 00000100h   
+FILE_BEGIN . . . . . . . . . . .	Number	 00000000h   
+FILE_CURRENT . . . . . . . . . .	Number	 00000001h   
+FILE_DELETE_CHILD  . . . . . . .	Number	 00000040h   
+FILE_END . . . . . . . . . . . .	Number	 00000002h   
+FILE_READ_DATA . . . . . . . . .	Number	 00000001h   
+FILE_SHARE_DELETE  . . . . . . .	Number	 00000004h   
+FILE_SHARE_READ  . . . . . . . .	Number	 00000001h   
+FILE_SHARE_WRITE . . . . . . . .	Number	 00000002h   
+FILE_WRITE_DATA  . . . . . . . .	Number	 00000002h   
+FIRSTPATHS . . . . . . . . . . .	Byte	 00000059 _DATA	
+FOCUS_EVENT  . . . . . . . . . .	Number	 00000010h   
+FORMAT_MESSAGE_ALLOCATE_BUFFER .	Number	 00000100h   
+FORMAT_MESSAGE_FROM_SYSTEM . . .	Number	 00001000h   
+FormatMessage  . . . . . . . . .	Text   	 FormatMessageA
+GAMEOVER . . . . . . . . . . . .	Byte	 0000005B _DATA	
+GENERIC_ALL  . . . . . . . . . .	Number	 10000000h   
+GENERIC_EXECUTE  . . . . . . . .	Number	 20000000h   
+GENERIC_READ . . . . . . . . . .	Number	 -80000000h   
+GENERIC_WRITE  . . . . . . . . .	Number	 40000000h   
+GOAL . . . . . . . . . . . . . .	Byte	 00000050 _DATA	
+GetCommandLine . . . . . . . . .	Text   	 GetCommandLineA
+HANDLE . . . . . . . . . . . . .	Text   	 DWORD
+HEAP_GENERATE_EXCEPTIONS . . . .	Number	 00000004h   
+HEAP_GROWABLE  . . . . . . . . .	Number	 00000002h   
+HEAP_NO_SERIALIZE  . . . . . . .	Number	 00000001h   
+HEAP_REALLOC_IN_PLACE_ONLY . . .	Number	 00000010h   
+HEAP_ZERO_MEMORY . . . . . . . .	Number	 00000008h   
+IDABORT  . . . . . . . . . . . .	Number	 00000003h   
+IDCANCEL . . . . . . . . . . . .	Number	 00000002h   
+IDCLOSE  . . . . . . . . . . . .	Number	 00000008h   
+IDCONTINUE . . . . . . . . . . .	Number	 0000000Bh   
+IDHELP . . . . . . . . . . . . .	Number	 00000009h   
+IDIGNORE . . . . . . . . . . . .	Number	 00000005h   
+IDNO . . . . . . . . . . . . . .	Number	 00000007h   
+IDOK . . . . . . . . . . . . . .	Number	 00000001h   
+IDRETRY  . . . . . . . . . . . .	Number	 00000004h   
+IDTIMEOUT  . . . . . . . . . . .	Number	 00007D00h   
+IDTRYAGAIN . . . . . . . . . . .	Number	 0000000Ah   
+IDYES  . . . . . . . . . . . . .	Number	 00000006h   
+INVALID_HANDLE_VALUE . . . . . .	Number	 -00000001h   
+KBDOWN_FLAG  . . . . . . . . . .	Number	 00000001h   
+KEY_EVENT  . . . . . . . . . . .	Number	 00000001h   
+KEY_MASKS  . . . . . . . . . . .	Number	 0000001Fh   
+LEFT_ALT_PRESSED . . . . . . . .	Number	 00000002h   
+LEFT_CTRL_PRESSED  . . . . . . .	Number	 00000008h   
+MARKLEVEL  . . . . . . . . . . .	Byte	 0000005A _DATA	
+MAZEHEIGHT . . . . . . . . . . .	Word	 00000060 _DATA	
+MB_ABORTRETRYIGNORE  . . . . . .	Number	 00000002h   
+MB_APPLMODAL . . . . . . . . . .	Number	 00000000h   
+MB_CANCELTRYCONTINUE . . . . . .	Number	 00000006h   
+MB_DEFBUTTON1  . . . . . . . . .	Number	 00000000h   
+MB_DEFBUTTON2  . . . . . . . . .	Number	 00000100h   
+MB_DEFBUTTON3  . . . . . . . . .	Number	 00000200h   
+MB_DEFBUTTON4  . . . . . . . . .	Number	 00000300h   
+MB_HELP  . . . . . . . . . . . .	Number	 00004000h   
+MB_ICONASTERISK  . . . . . . . .	Number	 00000040h   
+MB_ICONERROR . . . . . . . . . .	Number	 00000010h   
+MB_ICONEXCLAMATION . . . . . . .	Number	 00000030h   
+MB_ICONHAND  . . . . . . . . . .	Number	 00000010h   
+MB_ICONINFORMATION . . . . . . .	Number	 00000040h   
+MB_ICONQUESTION  . . . . . . . .	Number	 00000020h   
+MB_ICONSTOP  . . . . . . . . . .	Number	 00000010h   
+MB_ICONWARNING . . . . . . . . .	Number	 00000030h   
+MB_OKCANCEL  . . . . . . . . . .	Number	 00000001h   
+MB_OK  . . . . . . . . . . . . .	Number	 00000000h   
+MB_RETRYCANCEL . . . . . . . . .	Number	 00000005h   
+MB_SYSTEMMODAL . . . . . . . . .	Number	 00001000h   
+MB_TASKMODAL . . . . . . . . . .	Number	 00002000h   
+MB_USERICON  . . . . . . . . . .	Number	 00000080h   
+MB_YESNOCANCEL . . . . . . . . .	Number	 00000003h   
+MB_YESNO . . . . . . . . . . . .	Number	 00000004h   
+MENU_EVENT . . . . . . . . . . .	Number	 00000008h   
+MOUSE_EVENT  . . . . . . . . . .	Number	 00000002h   
+MessageBox . . . . . . . . . . .	Text   	 MessageBoxA
+NORTHPOSITION  . . . . . . . . .	Byte	 00000048 _DATA	
+NULL . . . . . . . . . . . . . .	Number	 00000000h   
+NUMLOCK_ON . . . . . . . . . . .	Number	 00000020h   
+OPEN_ALWAYS  . . . . . . . . . .	Number	 00000004h   
+OPEN_EXISTING  . . . . . . . . .	Number	 00000003h   
+PeekConsoleInput . . . . . . . .	Text   	 PeekConsoleInputA
+RIGHT_ALT_PRESSED  . . . . . . .	Number	 00000001h   
+RIGHT_CTRL_PRESSED . . . . . . .	Number	 00000004h   
+ReadConsoleInput . . . . . . . .	Text   	 ReadConsoleInputA
+ReadConsole  . . . . . . . . . .	Text   	 ReadConsoleA
+SCROLLLOCK_ON  . . . . . . . . .	Number	 00000040h   
+SHIFT_MASK . . . . . . . . . . .	Number	 00000010h   
+SHIFT_PRESSED  . . . . . . . . .	Number	 00000010h   
+SOUTHPOSITION  . . . . . . . . .	Byte	 0000004A _DATA	
+STD_ERROR_HANDLE . . . . . . . .	Number	 -0000000Ch   
+STD_INPUT_HANDLE . . . . . . . .	Number	 -0000000Ah   
+STD_OUTPUT_HANDLE  . . . . . . .	Number	 -0000000Bh   
+SetConsoleTitle  . . . . . . . .	Text   	 SetConsoleTitleA
+TAB  . . . . . . . . . . . . . .	Number	 00000009h   
+TRUE . . . . . . . . . . . . . .	Number	 00000001h   
+TRUNCATE_EXISTING  . . . . . . .	Number	 00000005h   
+VK_11  . . . . . . . . . . . . .	Number	 000000BDh   
+VK_12  . . . . . . . . . . . . .	Number	 000000BBh   
+VK_ADD . . . . . . . . . . . . .	Number	 0000006Bh   
+VK_BACK  . . . . . . . . . . . .	Number	 00000008h   
+VK_CANCEL  . . . . . . . . . . .	Number	 00000003h   
+VK_CAPITAL . . . . . . . . . . .	Number	 00000014h   
+VK_CLEAR . . . . . . . . . . . .	Number	 0000000Ch   
+VK_CONTROL . . . . . . . . . . .	Number	 00000011h   
+VK_DECIMAL . . . . . . . . . . .	Number	 0000006Eh   
+VK_DELETE  . . . . . . . . . . .	Number	 0000002Eh   
+VK_DIVIDE  . . . . . . . . . . .	Number	 0000006Fh   
+VK_DOWN  . . . . . . . . . . . .	Number	 00000028h   
+VK_END . . . . . . . . . . . . .	Number	 00000023h   
+VK_ESCAPE  . . . . . . . . . . .	Number	 0000001Bh   
+VK_EXECUTE . . . . . . . . . . .	Number	 0000002Bh   
+VK_F10 . . . . . . . . . . . . .	Number	 00000079h   
+VK_F11 . . . . . . . . . . . . .	Number	 0000007Ah   
+VK_F12 . . . . . . . . . . . . .	Number	 0000007Bh   
+VK_F13 . . . . . . . . . . . . .	Number	 0000007Ch   
+VK_F14 . . . . . . . . . . . . .	Number	 0000007Dh   
+VK_F15 . . . . . . . . . . . . .	Number	 0000007Eh   
+VK_F16 . . . . . . . . . . . . .	Number	 0000007Fh   
+VK_F17 . . . . . . . . . . . . .	Number	 00000080h   
+VK_F18 . . . . . . . . . . . . .	Number	 00000081h   
+VK_F19 . . . . . . . . . . . . .	Number	 00000082h   
+VK_F1  . . . . . . . . . . . . .	Number	 00000070h   
+VK_F20 . . . . . . . . . . . . .	Number	 00000083h   
+VK_F21 . . . . . . . . . . . . .	Number	 00000084h   
+VK_F22 . . . . . . . . . . . . .	Number	 00000085h   
+VK_F23 . . . . . . . . . . . . .	Number	 00000086h   
+VK_F24 . . . . . . . . . . . . .	Number	 00000087h   
+VK_F2  . . . . . . . . . . . . .	Number	 00000071h   
+VK_F3  . . . . . . . . . . . . .	Number	 00000072h   
+VK_F4  . . . . . . . . . . . . .	Number	 00000073h   
+VK_F5  . . . . . . . . . . . . .	Number	 00000074h   
+VK_F6  . . . . . . . . . . . . .	Number	 00000075h   
+VK_F7  . . . . . . . . . . . . .	Number	 00000076h   
+VK_F8  . . . . . . . . . . . . .	Number	 00000077h   
+VK_F9  . . . . . . . . . . . . .	Number	 00000078h   
+VK_HELP  . . . . . . . . . . . .	Number	 0000002Fh   
+VK_HOME  . . . . . . . . . . . .	Number	 00000024h   
+VK_INSERT  . . . . . . . . . . .	Number	 0000002Dh   
+VK_LBUTTON . . . . . . . . . . .	Number	 00000001h   
+VK_LCONTROL  . . . . . . . . . .	Number	 000000A2h   
+VK_LEFT  . . . . . . . . . . . .	Number	 00000025h   
+VK_LMENU . . . . . . . . . . . .	Number	 000000A4h   
+VK_LSHIFT  . . . . . . . . . . .	Number	 000000A0h   
+VK_MENU  . . . . . . . . . . . .	Number	 00000012h   
+VK_MULTIPLY  . . . . . . . . . .	Number	 0000006Ah   
+VK_NEXT  . . . . . . . . . . . .	Number	 00000022h   
+VK_NUMLOCK . . . . . . . . . . .	Number	 00000090h   
+VK_NUMPAD0 . . . . . . . . . . .	Number	 00000060h   
+VK_NUMPAD1 . . . . . . . . . . .	Number	 00000061h   
+VK_NUMPAD2 . . . . . . . . . . .	Number	 00000062h   
+VK_NUMPAD3 . . . . . . . . . . .	Number	 00000063h   
+VK_NUMPAD4 . . . . . . . . . . .	Number	 00000064h   
+VK_NUMPAD5 . . . . . . . . . . .	Number	 00000065h   
+VK_NUMPAD6 . . . . . . . . . . .	Number	 00000066h   
+VK_NUMPAD7 . . . . . . . . . . .	Number	 00000067h   
+VK_NUMPAD8 . . . . . . . . . . .	Number	 00000068h   
+VK_NUMPAD9 . . . . . . . . . . .	Number	 00000069h   
+VK_PAUSE . . . . . . . . . . . .	Number	 00000013h   
+VK_PRINT . . . . . . . . . . . .	Number	 0000002Ah   
+VK_PRIOR . . . . . . . . . . . .	Number	 00000021h   
+VK_RBUTTON . . . . . . . . . . .	Number	 00000002h   
+VK_RCONTROL  . . . . . . . . . .	Number	 000000A3h   
+VK_RETURN  . . . . . . . . . . .	Number	 0000000Dh   
+VK_RIGHT . . . . . . . . . . . .	Number	 00000027h   
+VK_RMENU . . . . . . . . . . . .	Number	 000000A5h   
+VK_RSHIFT  . . . . . . . . . . .	Number	 000000A1h   
+VK_SCROLL  . . . . . . . . . . .	Number	 00000091h   
+VK_SEPARATER . . . . . . . . . .	Number	 0000006Ch   
+VK_SHIFT . . . . . . . . . . . .	Number	 00000010h   
+VK_SNAPSHOT  . . . . . . . . . .	Number	 0000002Ch   
+VK_SPACE . . . . . . . . . . . .	Number	 00000020h   
+VK_SUBTRACT  . . . . . . . . . .	Number	 0000006Dh   
+VK_TAB . . . . . . . . . . . . .	Number	 00000009h   
+VK_UP  . . . . . . . . . . . . .	Number	 00000026h   
+WESTPOSITION . . . . . . . . . .	Byte	 0000004B _DATA	
+WINDOW_BUFFER_SIZE_EVENT . . . .	Number	 00000004h   
+WriteConsoleOutputCharacter  . .	Text   	 WriteConsoleOutputCharacterA
+WriteConsole . . . . . . . . . .	Text   	 WriteConsoleA
+agentErrorString . . . . . . . .	Byte	 00000000 _DATA	
+agentX . . . . . . . . . . . . .	Word	 00000040 _DATA	
+agentY . . . . . . . . . . . . .	Word	 00000042 _DATA	
+agent  . . . . . . . . . . . . .	Byte	 00000051 _DATA	
+backgroundColor  . . . . . . . .	Byte	 0000004D _DATA	
+black  . . . . . . . . . . . . .	Number	 00000000h   
+blue . . . . . . . . . . . . . .	Number	 00000001h   
+brown  . . . . . . . . . . . . .	Number	 00000006h   
+color  . . . . . . . . . . . . .	Byte	 0000004C _DATA	
+currentMark  . . . . . . . . . .	Byte	 00000058 _DATA	
+currentPosition  . . . . . . . .	Byte	 00000055 _DATA	
+cyan . . . . . . . . . . . . . .	Number	 00000003h   
+direction  . . . . . . . . . . .	Byte	 00000054 _DATA	
+east . . . . . . . . . . . . . .	Byte	 00000045 _DATA	
+exit . . . . . . . . . . . . . .	Text   	 INVOKE ExitProcess,0
+first  . . . . . . . . . . . . .	Byte	 00000052 _DATA	
+floor  . . . . . . . . . . . . .	Byte	 0000004F _DATA	
+gray . . . . . . . . . . . . . .	Number	 00000008h   
+green  . . . . . . . . . . . . .	Number	 00000002h   
+lastPositIon . . . . . . . . . .	Byte	 00000057 _DATA	
+lightBlue  . . . . . . . . . . .	Number	 00000009h   
+lightCyan  . . . . . . . . . . .	Number	 0000000Bh   
+lightGray  . . . . . . . . . . .	Number	 00000007h   
+lightGreen . . . . . . . . . . .	Number	 0000000Ah   
+lightMagenta . . . . . . . . . .	Number	 0000000Dh   
+lightRed . . . . . . . . . . . .	Number	 0000000Ch   
+magenta  . . . . . . . . . . . .	Number	 00000005h   
+mazeSize . . . . . . . . . . . .	Word	 0000005E _DATA	
+mazeWidth  . . . . . . . . . . .	Word	 0000005C _DATA	
+maze . . . . . . . . . . . . . .	Byte	 00000062 _DATA	
+newStepString  . . . . . . . . .	Byte	 0000003A _DATA	
+north  . . . . . . . . . . . . .	Byte	 00000044 _DATA	
+plannedPosition  . . . . . . . .	Byte	 00000056 _DATA	
+red  . . . . . . . . . . . . . .	Number	 00000004h   
+second . . . . . . . . . . . . .	Byte	 00000053 _DATA	
+south  . . . . . . . . . . . . .	Byte	 00000046 _DATA	
+wall . . . . . . . . . . . . . .	Byte	 0000004E _DATA	
+west . . . . . . . . . . . . . .	Byte	 00000047 _DATA	
+white  . . . . . . . . . . . . .	Number	 0000000Fh   
+wsprintf . . . . . . . . . . . .	Text   	 wsprintfA
+yellow . . . . . . . . . . . . .	Number	 0000000Eh   
+
+	   0 Warnings
+	   0 Errors
